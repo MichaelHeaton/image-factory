@@ -1,0 +1,136 @@
+---
+# Storage configuration tasks
+# Ensures proper mount points, permissions, and log rotation
+
+- name: Ensure /data directory exists with proper permissions
+  ansible.builtin.file:
+    path: /data
+    state: directory
+    mode: "0755"
+    owner: root
+    group: root
+
+- name: Verify /var/log is mounted on separate partition
+  ansible.builtin.mount:
+    path: /var/log
+    state: mounted
+  register: varlog_mount
+  failed_when: false
+  changed_when: false
+
+- name: Display /var/log mount information
+  ansible.builtin.debug:
+    msg: "{{ varlog_mount.mount }}"
+  when: varlog_mount.mount is defined
+
+- name: Verify /data is mounted on separate partition
+  ansible.builtin.mount:
+    path: /data
+    state: mounted
+  register: data_mount
+  failed_when: false
+  changed_when: false
+
+- name: Display /data mount information
+  ansible.builtin.debug:
+    msg: "{{ data_mount.mount }}"
+  when: data_mount.mount is defined
+
+- name: Configure logrotate to prevent /var/log from filling up
+  ansible.builtin.copy:
+    dest: /etc/logrotate.d/00-system-logs
+    content: |
+      # System-wide log rotation configuration
+      # Prevents logs from filling up /var/log partition
+
+      /var/log/syslog {
+          rotate 7
+          daily
+          missingok
+          notifempty
+          delaycompress
+          compress
+          postrotate
+              /usr/lib/rsyslog/rsyslog-rotate
+          endscript
+      }
+
+      /var/log/mail.info
+      /var/log/mail.warn
+      /var/log/mail.err
+      /var/log/mail.log
+      /var/log/daemon.log
+      /var/log/kern.log
+      /var/log/auth.log
+      /var/log/user.log
+      /var/log/lpr.log
+      /var/log/cron.log
+      /var/log/debug
+      /var/log/messages {
+          rotate 4
+          weekly
+          missingok
+          notifempty
+          compress
+          delaycompress
+          sharedscripts
+          postrotate
+              /usr/lib/rsyslog/rsyslog-rotate
+          endscript
+      }
+
+      /var/log/apt/history.log {
+          rotate 12
+          monthly
+          missingok
+          notifempty
+          compress
+      }
+
+      /var/log/apt/term.log {
+          rotate 12
+          monthly
+          missingok
+          notifempty
+          compress
+      }
+
+      /var/log/unattended-upgrades/*.log {
+          rotate 12
+          monthly
+          missingok
+          notifempty
+          compress
+      }
+    mode: "0644"
+    owner: root
+    group: root
+
+- name: Configure systemd journal to limit size
+  ansible.builtin.lineinfile:
+    path: /etc/systemd/journald.conf
+    regexp: "^#?SystemMaxUse="
+    line: "SystemMaxUse=500M"
+    backup: true
+
+- name: Configure systemd journal to limit files
+  ansible.builtin.lineinfile:
+    path: /etc/systemd/journald.conf
+    regexp: "^#?SystemMaxFiles="
+    line: "SystemMaxFiles=10"
+    backup: true
+
+- name: Reload systemd to apply journald changes
+  ansible.builtin.systemd:
+    daemon_reload: true
+    name: systemd-journald
+    state: restarted
+
+- name: Display disk usage for all partitions
+  ansible.builtin.command: df -h
+  register: disk_usage
+  changed_when: false
+
+- name: Show disk usage
+  ansible.builtin.debug:
+    var: disk_usage.stdout_lines

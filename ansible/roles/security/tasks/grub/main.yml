@@ -1,0 +1,45 @@
+---
+# GRUB and boot security configuration
+
+- name: Configure GRUB security settings
+  ansible.builtin.blockinfile:
+    path: /etc/default/grub
+    marker: "# {mark} ANSIBLE MANAGED BLOCK - SECURITY"
+    block: |
+      # Security hardening
+      GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"
+      GRUB_CMDLINE_LINUX="apparmor=1 security=apparmor"
+
+      # Disable recovery mode (optional, comment out if needed)
+      # GRUB_DISABLE_RECOVERY="true"
+    insertafter: "^GRUB_CMDLINE_LINUX="
+
+- name: Update GRUB configuration
+  ansible.builtin.command: update-grub
+  register: grub_update
+  changed_when: grub_update.rc == 0
+  failed_when: false
+
+- name: Restrict kernel module loading
+  ansible.builtin.copy:
+    dest: /etc/modprobe.d/security.conf
+    content: |
+      # Disable unnecessary filesystems
+      install cramfs /bin/true
+      install freevxfs /bin/true
+      install jffs2 /bin/true
+      install hfs /bin/true
+      install hfsplus /bin/true
+      install squashfs /bin/true
+      install udf /bin/true
+
+      # Disable USB storage (uncomment if needed)
+      # install usb-storage /bin/true
+    mode: "0644"
+    owner: root
+    group: root
+
+- name: Note about module loading restrictions
+  ansible.builtin.debug:
+    msg: "Module loading restrictions are configured via /etc/modprobe.d/security.conf. kernel.modules_disabled can only be set at boot time via kernel parameters if needed."
+  changed_when: false

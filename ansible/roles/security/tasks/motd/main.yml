@@ -1,0 +1,76 @@
+---
+# MOTD and banner configuration
+
+- name: Configure legal warning banner
+  ansible.builtin.copy:
+    dest: /etc/issue
+    content: |
+      ###############################################################################
+      #                                                                             #
+      #                            WARNING - AUTHORIZED ACCESS ONLY                #
+      #                                                                             #
+      #  This system is for the use of authorized users only. Individuals using    #
+      #  this computer system without authority, or in excess of their authority,   #
+      #  are subject to having all of their activities on this system monitored    #
+      #  and recorded by system personnel.                                          #
+      #                                                                             #
+      #  In the course of monitoring individuals improperly using this system,     #
+      #  or in the course of system maintenance, the activities of authorized users #
+      #  may also be monitored.                                                     #
+      #                                                                             #
+      #  Anyone using this system expressly consents to such monitoring and is     #
+      #  advised that if such monitoring reveals possible evidence of criminal    #
+      #  activity, system personnel may provide the evidence of such monitoring    #
+      #  to law enforcement officials.                                              #
+      #                                                                             #
+      ###############################################################################
+    mode: "0644"
+    owner: root
+    group: root
+
+- name: Configure SSH banner
+  ansible.builtin.copy:
+    dest: /etc/issue.net
+    content: |
+      ###############################################################################
+      #                            WARNING - AUTHORIZED ACCESS ONLY                #
+      #  This system is for authorized users only. All activities are monitored.   #
+      ###############################################################################
+    mode: "0644"
+    owner: root
+    group: root
+
+- name: Enable SSH banner
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "^#?Banner"
+    line: "Banner /etc/issue.net"
+    backup: true
+
+- name: Configure MOTD
+  ansible.builtin.copy:
+    dest: /etc/motd
+    content: |
+
+      ================================================================================
+      System Information
+      ================================================================================
+      This system is monitored. Unauthorized access is prohibited.
+
+      ================================================================================
+      Image Factory Information
+      ================================================================================
+      This system was built using the Image Factory automation tool.
+      Repository: https://github.com/MichaelHeaton/image-factory
+      ================================================================================
+
+    mode: "0644"
+    owner: root
+    group: root
+
+- name: Restart SSH to apply banner changes
+  ansible.builtin.systemd:
+    name: ssh
+    state: restarted
+    daemon_reload: true
+  when: ansible_facts['service_mgr'] == 'systemd'

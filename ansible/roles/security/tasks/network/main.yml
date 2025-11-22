@@ -1,0 +1,40 @@
+---
+# Additional network security hardening
+
+- name: Configure additional network security parameters
+  ansible.builtin.sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    state: present
+    sysctl_set: true
+    reload: true
+  loop:
+    - { name: "net.ipv4.tcp_timestamps", value: "1" }
+    - { name: "net.ipv4.tcp_sack", value: "1" }
+    - { name: "net.ipv4.tcp_window_scaling", value: "1" }
+    - { name: "net.ipv4.tcp_fin_timeout", value: "15" }
+    - { name: "net.ipv4.tcp_keepalive_time", value: "300" }
+    - { name: "net.ipv4.tcp_keepalive_probes", value: "5" }
+    - { name: "net.ipv4.tcp_keepalive_intvl", value: "15" }
+    - { name: "net.ipv4.icmp_echo_ignore_all", value: "0" }
+    - { name: "net.ipv6.conf.all.accept_ra", value: "0" }
+    - { name: "net.ipv6.conf.default.accept_ra", value: "0" }
+    - { name: "net.ipv6.conf.all.disable_ipv6", value: "0" }
+    - { name: "net.ipv6.conf.default.disable_ipv6", value: "0" }
+
+- name: Make network security settings persistent
+  ansible.builtin.blockinfile:
+    path: /etc/sysctl.conf
+    marker: "# {mark} ANSIBLE MANAGED BLOCK - NETWORK SECURITY"
+    block: |
+      # Additional network security parameters
+      net.ipv4.tcp_timestamps = 1
+      net.ipv4.tcp_sack = 1
+      net.ipv4.tcp_window_scaling = 1
+      net.ipv4.tcp_fin_timeout = 15
+      net.ipv4.tcp_keepalive_time = 300
+      net.ipv4.tcp_keepalive_probes = 5
+      net.ipv4.tcp_keepalive_intvl = 15
+      net.ipv4.icmp_echo_ignore_all = 0
+      net.ipv6.conf.all.accept_ra = 0
+      net.ipv6.conf.default.accept_ra = 0

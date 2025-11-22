@@ -1,0 +1,59 @@
+---
+- name: Update package lists
+  ansible.builtin.apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Upgrade all packages
+  ansible.builtin.apt:
+    upgrade: dist
+    update_cache: yes
+    force_apt_get: true
+
+- name: Install essential packages
+  ansible.builtin.apt:
+    name:
+      - curl
+      - wget
+      - git
+      - vim
+      - ufw
+      - unattended-upgrades
+      - apt-transport-https
+      - ca-certificates
+      - gnupg
+      - lsb-release
+      - software-properties-common
+      - qemu-guest-agent
+    state: present
+
+- name: Enable and start qemu-guest-agent
+  ansible.builtin.systemd:
+    name: qemu-guest-agent
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Ensure SSH service is enabled and running
+  ansible.builtin.systemd:
+    name: ssh
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Set timezone to UTC
+  ansible.builtin.timezone:
+    name: UTC
+
+- name: Enable and start systemd-timesyncd
+  ansible.builtin.systemd:
+    name: systemd-timesyncd
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Clean up unused packages
+  ansible.builtin.apt:
+    autoremove: true
+    autoclean: true
+

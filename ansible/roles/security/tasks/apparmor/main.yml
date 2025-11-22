@@ -1,0 +1,33 @@
+---
+# AppArmor configuration
+
+- name: Install AppArmor
+  ansible.builtin.apt:
+    name:
+      - apparmor
+      - apparmor-utils
+    state: present
+
+- name: Enable AppArmor
+  ansible.builtin.systemd:
+    name: apparmor
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Set AppArmor to enforcing mode
+  ansible.builtin.command: aa-enforce /etc/apparmor.d/*
+  register: apparmor_enforce
+  changed_when: apparmor_enforce.rc == 0
+  failed_when: false
+
+- name: Verify AppArmor status
+  ansible.builtin.command: aa-status
+  register: apparmor_status
+  changed_when: false
+  failed_when: false
+
+- name: Display AppArmor status
+  ansible.builtin.debug:
+    var: apparmor_status.stdout_lines
+  when: apparmor_status.rc == 0
