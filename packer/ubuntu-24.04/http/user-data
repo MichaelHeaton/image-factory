@@ -1,0 +1,121 @@
+#cloud-config
+autoinstall:
+  version: 1
+  early-commands:
+    - sudo systemctl stop ssh
+  locale: en_US.UTF-8
+  keyboard:
+    layout: us
+  storage:
+    config:
+      # GPT partition table on the disk (use match to find the disk)
+      - ptable: gpt
+        path: /dev/sda
+        wipe: superblock
+        preserve: false
+        grub_device: true
+        type: disk
+        id: disk-sda
+        name: ''
+      # BIOS boot partition (required for SeaBIOS)
+      - device: disk-sda
+        size: 1M
+        flag: bios_grub
+        number: 1
+        preserve: false
+        type: partition
+        id: partition-bios-boot
+      # LVM physical partition (uses remaining space)
+      - device: disk-sda
+        size: -1
+        wipe: superblock
+        preserve: false
+        type: partition
+        id: partition-lvm
+      # LVM volume group
+      - id: volgroup-ubuntu-vg
+        type: lvm_volgroup
+        name: ubuntu-vg
+        devices:
+          - partition-lvm
+      # Root logical volume (10GB)
+      - id: partition-root
+        type: lvm_partition
+        name: ubuntu-lv
+        size: 10G
+        volgroup: volgroup-ubuntu-vg
+      - id: format-root
+        type: format
+        volume: partition-root
+        fstype: ext4
+      - id: mount-root
+        type: mount
+        path: /
+        device: format-root
+      # /var/log logical volume (5GB) - prevents logs from filling root
+      - id: partition-varlog
+        type: lvm_partition
+        name: varlog-lv
+        size: 5G
+        volgroup: volgroup-ubuntu-vg
+      - id: format-varlog
+        type: format
+        volume: partition-varlog
+        fstype: ext4
+      - id: mount-varlog
+        type: mount
+        path: /var/log
+        device: format-varlog
+      # /data logical volume (uses remaining space, ~20GB+)
+      - id: partition-data
+        type: lvm_partition
+        name: data-lv
+        size: -1
+        volgroup: volgroup-ubuntu-vg
+      - id: format-data
+        type: format
+        volume: partition-data
+        fstype: ext4
+      - id: mount-data
+        type: mount
+        path: /data
+        device: format-data
+  network:
+    network:
+      version: 2
+      ethernets:
+        enp6s18:
+          dhcp4: true
+  identity:
+    hostname: ubuntu-server
+    username: packer
+    password: $6$ZVWRjEJ5$jeNaTSFhrrcqOquWX5fbm4TvrX4qpqUVwqapJzvBPWbDVPQaIOzWVHiFSx3hWxWjUZuJu3a3W3RzKDqLcmNgH1
+  ssh:
+    install-server: true
+    allow-pw: true
+  packages:
+    - openssh-server
+    - curl
+    - wget
+    - git
+    - vim
+    - ufw
+    - unattended-upgrades
+    - qemu-guest-agent
+  user-data:
+    disable_root: false
+    timezone: UTC
+  late-commands:
+    - sed -i -e 's/^#\?PasswordAuthentication.*/PasswordAuthentication yes/g' /target/etc/ssh/sshd_config
+    - echo 'packer ALL=(ALL) NOPASSWD:ALL' > /target/etc/sudoers.d/packer
+    - curtin in-target --target=/target -- chmod 440 /etc/sudoers.d/packer
+    - curtin in-target --target=/target -- visudo -c -f /etc/sudoers.d/packer
+    - curtin in-target --target=/target -- systemctl enable ssh
+    - curtin in-target --target=/target -- systemctl start ssh
+    - curtin in-target --target=/target -- systemctl enable qemu-guest-agent
+    - curtin in-target --target=/target -- systemctl start qemu-guest-agent
+    # Ensure /data directory exists with proper permissions
+    - curtin in-target --target=/target -- mkdir -p /data
+    - curtin in-target --target=/target -- chmod 755 /data
+    - curtin in-target --target=/target -- chown root:root /data
+

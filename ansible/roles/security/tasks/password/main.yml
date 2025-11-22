@@ -1,0 +1,30 @@
+---
+- name: Install password quality tools
+  ansible.builtin.apt:
+    name: libpam-pwquality
+    state: present
+
+- name: Configure password quality
+  ansible.builtin.copy:
+    dest: /etc/security/pwquality.conf
+    content: |
+      minlen = 14
+      dcredit = -1
+      ucredit = -1
+      ocredit = -1
+      lcredit = -1
+
+- name: Configure PAM password policy
+  ansible.builtin.replace:
+    path: /etc/pam.d/common-password
+    regexp: '^password\s+requisite\s+pam_pwquality\.so'
+    replace: "password requisite pam_pwquality.so minlen=14 remember=5"
+  register: pam_result
+
+- name: Add PAM password policy if not present
+  ansible.builtin.lineinfile:
+    path: /etc/pam.d/common-password
+    regexp: '^password\s+requisite\s+pam_unix\.so'
+    line: "password requisite pam_unix.so minlen=14 remember=5"
+    insertafter: '^password\s+requisite\s+pam_pwquality\.so'
+  when: pam_result.changed == false

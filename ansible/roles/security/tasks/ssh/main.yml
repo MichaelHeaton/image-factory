@@ -1,0 +1,48 @@
+---
+- name: Backup SSH configuration
+  ansible.builtin.copy:
+    src: /etc/ssh/sshd_config
+    dest: /etc/ssh/sshd_config.backup
+    remote_src: true
+
+- name: Configure SSH security settings
+  ansible.builtin.blockinfile:
+    path: /etc/ssh/sshd_config
+    marker: "# {mark} ANSIBLE MANAGED BLOCK"
+    block: |
+      # Security hardening settings
+      PermitRootLogin no
+      PasswordAuthentication no
+      PubkeyAuthentication yes
+      AuthorizedKeysFile .ssh/authorized_keys
+      PermitEmptyPasswords no
+      ChallengeResponseAuthentication no
+      UsePAM yes
+      X11Forwarding no
+      MaxAuthTries 3
+      MaxSessions 2
+      ClientAliveInterval 300
+      ClientAliveCountMax 2
+      Compression no
+      Protocol 2
+
+      # Cipher and MAC algorithms
+      Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr
+      MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha2-512,hmac-sha2-256
+      KexAlgorithms curve25519-sha256@libssh.org,diffie-hellman-group-exchange-sha256
+      HostKeyAlgorithms ssh-ed25519,ssh-ed25519-cert-v01@openssh.com,rsa-sha2-512,rsa-sha2-512-cert-v01@openssh.com
+
+- name: Ensure SSH service is enabled and running
+  ansible.builtin.systemd:
+    name: ssh
+    enabled: true
+    state: restarted
+    daemon_reload: true
+
+- name: Verify SSH is listening on port 22
+  ansible.builtin.wait_for:
+    port: 22
+    host: "{{ ansible_default_ipv4.address }}"
+    delay: 2
+    timeout: 10
+  ignore_errors: true

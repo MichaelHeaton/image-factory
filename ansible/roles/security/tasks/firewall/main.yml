@@ -1,0 +1,34 @@
+---
+- name: Reset UFW to defaults
+  community.general.ufw:
+    state: reset
+
+- name: Configure UFW default policies
+  community.general.ufw:
+    direction: "{{ item.direction }}"
+    policy: "{{ item.policy }}"
+  loop:
+    - { direction: "incoming", policy: "deny" }
+    - { direction: "outgoing", policy: "allow" }
+
+- name: Allow SSH through firewall
+  community.general.ufw:
+    rule: allow
+    port: "22"
+    proto: tcp
+    comment: "SSH"
+
+- name: Enable UFW
+  community.general.ufw:
+    state: enabled
+
+- name: Verify UFW allows SSH
+  ansible.builtin.command: ufw status | grep -q "22/tcp.*ALLOW" || ufw status numbered | grep -q "22/tcp"
+  changed_when: false
+  failed_when: false
+  register: ufw_ssh_check
+
+- name: Display UFW status if SSH rule missing
+  ansible.builtin.debug:
+    msg: "Warning: SSH rule may not be properly configured in UFW"
+  when: ufw_ssh_check.rc != 0

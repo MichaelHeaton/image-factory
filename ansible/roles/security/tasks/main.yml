@@ -1,0 +1,73 @@
+---
+- name: Include SSH hardening tasks
+  ansible.builtin.include_tasks: ssh/main.yml
+
+- name: Include firewall configuration tasks
+  ansible.builtin.include_tasks: firewall/main.yml
+
+- name: Include automatic updates tasks
+  ansible.builtin.include_tasks: updates/main.yml
+
+- name: Include kernel security tasks
+  ansible.builtin.include_tasks: kernel/main.yml
+
+- name: Include audit logging tasks
+  ansible.builtin.include_tasks: audit/main.yml
+
+- name: Include password policy tasks
+  ansible.builtin.include_tasks: password/main.yml
+
+- name: Include file permissions tasks
+  ansible.builtin.include_tasks: permissions/main.yml
+
+- name: Include fail2ban tasks
+  ansible.builtin.include_tasks: fail2ban/main.yml
+
+- name: Include AppArmor tasks
+  ansible.builtin.include_tasks: apparmor/main.yml
+
+- name: Include GRUB security tasks
+  ansible.builtin.include_tasks: grub/main.yml
+
+- name: Include network hardening tasks
+  ansible.builtin.include_tasks: network/main.yml
+
+- name: Include MOTD/banner tasks
+  ansible.builtin.include_tasks: motd/main.yml
+
+- name: Include filesystem security tasks
+  ansible.builtin.include_tasks: filesystem/main.yml
+
+- name: Remove unnecessary packages
+  ansible.builtin.apt:
+    name:
+      - snapd
+      - ubuntu-advantage-tools
+      - popularity-contest
+    state: absent
+    purge: true
+  ignore_errors: true
+
+- name: Clean up unused packages
+  ansible.builtin.apt:
+    autoremove: true
+    autoclean: true
+
+- name: Check if services exist before disabling
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+  register: service_check
+  loop:
+    - bluetooth
+    - avahi-daemon
+  failed_when: false
+  changed_when: false
+
+- name: Disable unnecessary services
+  ansible.builtin.systemd:
+    name: "{{ item.item }}"
+    enabled: false
+    state: stopped
+  loop: "{{ service_check.results }}"
+  when: item.status is defined and item.status.ActiveState is defined
+  ignore_errors: true

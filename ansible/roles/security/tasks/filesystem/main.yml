@@ -1,0 +1,61 @@
+---
+# File system security hardening
+
+- name: Check if /tmp is already tmpfs
+  ansible.builtin.set_fact:
+    tmp_is_tmpfs: "{{ ansible_mounts | selectattr('mount', 'equalto', '/tmp') | selectattr('fstype', 'equalto', 'tmpfs') | list | length > 0 }}"
+
+- name: Ensure /tmp is mounted as tmpfs with secure options
+  ansible.posix.mount:
+    path: /tmp
+    src: tmpfs
+    fstype: tmpfs
+    opts: defaults,noexec,nosuid,nodev,size=1G
+    state: mounted
+  when: not tmp_is_tmpfs | default(false) | bool
+  ignore_errors: true
+
+- name: Check if /var/tmp is already mounted
+  ansible.builtin.set_fact:
+    vartmp_is_mounted: "{{ ansible_mounts | selectattr('mount', 'equalto', '/var/tmp') | list | length > 0 }}"
+
+- name: Configure secure mount options for /var/tmp
+  ansible.posix.mount:
+    path: /var/tmp
+    src: /tmp
+    fstype: none
+    opts: bind,noexec,nosuid,nodev
+    state: mounted
+  when: not vartmp_is_mounted | default(false) | bool
+  ignore_errors: true
+
+- name: Update /etc/fstab for /tmp
+  ansible.builtin.lineinfile:
+    path: /etc/fstab
+    regexp: '^[^#].*\s+/tmp\s+'
+    line: "tmpfs /tmp tmpfs defaults,noexec,nosuid,nodev,size=1G 0 0"
+    backup: true
+    state: present
+
+- name: Update /etc/fstab for /var/tmp
+  ansible.builtin.lineinfile:
+    path: /etc/fstab
+    regexp: '^[^#].*\s+/var/tmp\s+'
+    line: "/tmp /var/tmp none bind,noexec,nosuid,nodev 0 0"
+    backup: true
+    insertafter: '^[^#].*\s+/tmp\s+'
+
+- name: Set sticky bit on world-writable directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    mode: "1777"
+  loop:
+    - /tmp
+    - /var/tmp
+
+- name: Configure /proc mount options
+  ansible.builtin.replace:
+    path: /etc/fstab
+    regexp: '^[^#].*\s+/proc\s+'
+    replace: "proc /proc proc defaults,hidepid=2 0 0"
+    backup: true

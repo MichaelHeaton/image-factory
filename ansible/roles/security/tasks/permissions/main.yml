@@ -1,0 +1,16 @@
+---
+- name: Set secure file permissions
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "/etc/passwd", mode: "0644" }
+    - { path: "/etc/shadow", mode: "0600" }
+    - { path: "/etc/group", mode: "0644" }
+    - { path: "/etc/gshadow", mode: "0600" }
+
+- name: Set secure log file permissions
+  ansible.builtin.shell: |
+    find /var/log -type f -exec chmod 640 {} \;
+    find /var/log -type d -exec chmod 750 {} \;
+  changed_when: false

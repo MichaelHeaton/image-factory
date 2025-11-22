@@ -1,0 +1,61 @@
+---
+- name: Install zsh
+  ansible.builtin.apt:
+    name: zsh
+    state: present
+
+- name: Create michael user
+  ansible.builtin.user:
+    name: michael
+    shell: /bin/bash
+    create_home: true
+    groups: sudo
+    append: true
+
+- name: Configure passwordless sudo for michael
+  ansible.builtin.lineinfile:
+    path: /etc/sudoers.d/michael
+    line: "michael ALL=(ALL) NOPASSWD:ALL"
+    mode: "0440"
+    validate: "visudo -cf %s"
+    create: true
+
+- name: Check if SSH key file exists on control node
+  ansible.builtin.stat:
+    path: "{{ lookup('env', 'HOME') }}/.ssh/vm-access-key.pub"
+  register: ssh_key_file
+  delegate_to: localhost
+  become: false
+  run_once: true
+
+- name: Read SSH public key from control node
+  ansible.builtin.slurp:
+    src: "{{ lookup('env', 'HOME') }}/.ssh/vm-access-key.pub"
+  register: ssh_key_content
+  delegate_to: localhost
+  become: false
+  run_once: true
+  when: ssh_key_file.stat.exists
+
+- name: Create .ssh directory for michael
+  ansible.builtin.file:
+    path: /home/michael/.ssh
+    state: directory
+    owner: michael
+    group: michael
+    mode: "0700"
+  when: ssh_key_file.stat.exists
+
+- name: Add SSH public key for michael
+  ansible.builtin.authorized_key:
+    user: michael
+    key: "{{ ssh_key_content.content | b64decode | trim }}"
+    state: present
+    exclusive: false
+  when: ssh_key_file.stat.exists
+
+- name: Set default shell to bash (with zsh available)
+  ansible.builtin.user:
+    name: michael
+    shell: /bin/bash
+  # Note: zsh is installed and available, but bash remains the default shell
