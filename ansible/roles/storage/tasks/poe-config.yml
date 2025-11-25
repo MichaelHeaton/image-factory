@@ -1,0 +1,75 @@
+---
+# PoE HAT configuration for Raspberry Pi 5
+
+- name: Check current config.txt PoE settings
+  ansible.builtin.shell: |
+    grep -E "(poe|dtoverlay.*poe)" /boot/firmware/config.txt || echo "No PoE config found"
+  register: current_poe_config
+  changed_when: false
+  failed_when: false
+  when: is_raspberry_pi | default(false)
+
+- name: Display current PoE config
+  ansible.builtin.debug:
+    msg: "{{ current_poe_config.stdout_lines }}"
+  when: is_raspberry_pi | default(false) and current_poe_config.rc == 0
+
+- name: Check if PoE+ overlay exists
+  ansible.builtin.stat:
+    path: /boot/firmware/overlays/rpi-poe-plus.dtbo
+  register: poe_plus_overlay
+  when: is_raspberry_pi | default(false)
+
+- name: Check if PoE overlay exists
+  ansible.builtin.stat:
+    path: /boot/firmware/overlays/rpi-poe.dtbo
+  register: poe_overlay
+  when: is_raspberry_pi | default(false)
+
+- name: Add PoE+ HAT configuration to config.txt
+  ansible.builtin.blockinfile:
+    path: /boot/firmware/config.txt
+    marker: "# {mark} ANSIBLE MANAGED BLOCK - PoE+ HAT Configuration"
+    block: |
+      # PoE+ HAT configuration
+      [all]
+      dtoverlay=rpi-poe-plus
+    insertafter: "^\\[all\\]"
+    create: true
+    backup: false
+  when:
+    - is_raspberry_pi | default(false)
+    - "'poe' not in current_poe_config.stdout"
+    - poe_plus_overlay.stat.exists | default(false)
+
+- name: Add PoE HAT configuration to config.txt (fallback to non-plus)
+  ansible.builtin.blockinfile:
+    path: /boot/firmware/config.txt
+    marker: "# {mark} ANSIBLE MANAGED BLOCK - PoE HAT Configuration"
+    block: |
+      # PoE HAT configuration
+      [all]
+      dtoverlay=rpi-poe
+    insertafter: "^\\[all\\]"
+    create: true
+    backup: false
+  when:
+    - is_raspberry_pi | default(false)
+    - "'poe' not in current_poe_config.stdout"
+    - not (poe_plus_overlay.stat.exists | default(false))
+    - poe_overlay.stat.exists | default(false)
+
+- name: Note about PoE HAT driver errors
+  ansible.builtin.debug:
+    msg: |
+      PoE HAT configuration added. A reboot is required for changes to take effect.
+
+      Note: If you see "rpi-poe: driver failed to report 'health' property" errors, these are
+      harmless when using USB-C power instead of PoE power. The driver tries to read PoE
+      power status which isn't available when powered via USB-C.
+  when:
+    - is_raspberry_pi | default(false)
+    - "'poe' not in current_poe_config.stdout"
+    - (poe_plus_overlay.stat.exists | default(false)) or (poe_overlay.stat.exists | default(false))
+  changed_when: false
+

@@ -2,6 +2,18 @@
 # Storage configuration tasks
 # Ensures proper mount points, permissions, and log rotation
 
+- name: Include PCIe configuration tasks for Pi nodes
+  ansible.builtin.include_tasks: pcie-config.yml
+  when: is_raspberry_pi | default(false)
+
+- name: Include PoE HAT configuration tasks for Pi nodes
+  ansible.builtin.include_tasks: poe-config.yml
+  when: is_raspberry_pi | default(false)
+
+- name: Include NVME diagnostic tasks for Pi nodes
+  ansible.builtin.include_tasks: nvme.yml
+  when: is_raspberry_pi | default(false)
+
 - name: Ensure /data directory exists with proper permissions
   ansible.builtin.file:
     path: /data

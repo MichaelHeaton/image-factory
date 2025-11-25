@@ -9,4 +9,6 @@
     - users
     - security
     - storage
-    - clean
+    # Skip clean role for production Raspberry Pi nodes (it's for image building)
+    - role: clean
+      when: not (is_raspberry_pi | default(false))

@@ -1,0 +1,39 @@
+---
+all:
+  children:
+    pi5:
+      hosts:
+        swarm-pi5-01:
+          ansible_host: 172.16.15.13
+          ansible_user: packer
+          target_hostname: swarm-pi5-01
+          static_ip: 172.16.15.13/24
+          storage_ip: 172.16.30.13/24
+        swarm-pi5-02:
+          ansible_host: 172.16.15.14
+          ansible_user: packer
+          target_hostname: swarm-pi5-02
+          static_ip: 172.16.15.14/24
+          storage_ip: 172.16.30.14/24
+        swarm-pi5-03:
+          ansible_host: 172.16.15.15
+          ansible_user: packer
+          target_hostname: swarm-pi5-03
+          static_ip: 172.16.15.15/24
+          storage_ip: 172.16.30.15/24
+        swarm-pi5-04:
+          ansible_host: 172.16.15.16
+          ansible_user: packer
+          target_hostname: swarm-pi5-04
+          static_ip: 172.16.15.16/24
+          storage_ip: 172.16.30.16/24
+          production_ip: 172.16.10.16/24
+      vars:
+        is_raspberry_pi: true
+        ansible_python_interpreter: /usr/bin/python3
+        ansible_ssh_private_key_file: "{{ lookup('env', 'HOME') }}/.ssh/vm-access-key"
+        network_gateway: 172.16.15.1
+        network_dns_servers:
+          - 172.16.15.1
+          - 1.1.1.1
+
