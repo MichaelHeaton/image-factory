@@ -9,14 +9,16 @@
     upgrade: dist
     update_cache: yes
     force_apt_get: true
+  ignore_errors: true
 
-- name: Install essential packages
-  ansible.builtin.apt:
-    name:
+- name: Set base packages list
+  ansible.builtin.set_fact:
+    base_packages:
       - curl
       - wget
       - git
       - vim
+      - tmux
       - ufw
       - unattended-upgrades
       - apt-transport-https
@@ -24,7 +26,15 @@
       - gnupg
       - lsb-release
       - software-properties-common
-      - qemu-guest-agent
+
+- name: Add qemu-guest-agent to packages list for non-Pi systems
+  ansible.builtin.set_fact:
+    base_packages: "{{ base_packages + ['qemu-guest-agent'] }}"
+  when: not (is_raspberry_pi | default(false))
+
+- name: Install essential packages
+  ansible.builtin.apt:
+    name: "{{ base_packages }}"
     state: present
 
 - name: Enable and start qemu-guest-agent
@@ -33,6 +43,7 @@
     enabled: true
     state: started
     daemon_reload: true
+  when: not (is_raspberry_pi | default(false))
 
 - name: Ensure SSH service is enabled and running
   ansible.builtin.systemd:
@@ -40,6 +51,62 @@
     enabled: true
     state: started
     daemon_reload: true
+
+- name: Get current hostname
+  ansible.builtin.command: hostname
+  register: current_hostname
+  changed_when: false
+  failed_when: false
+
+- name: Set hostname if target_hostname is defined and different
+  ansible.builtin.hostname:
+    name: "{{ target_hostname }}"
+  when: target_hostname is defined and current_hostname.stdout != target_hostname
+
+- name: Update /etc/hosts with new hostname
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: '^127\.0\.1\.1\s+.*'
+    line: "127.0.1.1\t{{ target_hostname }} {{ target_hostname }}.local"
+    state: present
+  when: target_hostname is defined
+
+- name: Detect primary network interface
+  ansible.builtin.shell: |
+    ip route | grep default | awk '{print $5}' | head -1 || echo "eth0"
+  register: network_interface_result
+  changed_when: false
+  failed_when: false
+  when: static_ip is defined
+
+- name: Set network interface name
+  ansible.builtin.set_fact:
+    network_interface: "{{ network_interface_result.stdout | trim | default('eth0') }}"
+  when: static_ip is defined
+
+- name: Check if netplan configuration exists
+  ansible.builtin.stat:
+    path: /etc/netplan/00-installer-config.yaml
+  register: netplan_config
+  when: static_ip is defined
+
+- name: Configure static IP with netplan
+  ansible.builtin.template:
+    src: netplan-static.yaml.j2
+    dest: /etc/netplan/00-installer-config.yaml
+    mode: "0600"
+    owner: root
+    group: root
+  when: static_ip is defined
+
+- name: Apply netplan configuration (use try to avoid disconnection)
+  ansible.builtin.command: netplan try --timeout 30 || netplan apply
+  when: static_ip is defined
+  register: netplan_apply
+  changed_when: netplan_apply.rc == 0
+  async: 30
+  poll: 0
+  ignore_errors: true
 
 - name: Set timezone to UTC
   ansible.builtin.timezone:

@@ -26,3 +26,7 @@ output-*/
 
 # Ansible cache and temporary files
 .ansible/
+
+# Ansible password vault files
+ansible/inventory/*-vault.yml
+ansible/inventory/*-secrets.yml

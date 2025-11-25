@@ -1,0 +1,13 @@
+---
+# Diagnostic playbook for NVME drive detection on Raspberry Pi 5
+
+- name: Diagnose NVME drives on Pi5 nodes
+  hosts: pi5
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Include NVME diagnostic tasks
+      ansible.builtin.include_tasks: roles/storage/tasks/nvme.yml
+      when: is_raspberry_pi | default(false)
+

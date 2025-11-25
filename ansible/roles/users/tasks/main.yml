@@ -20,6 +20,14 @@
     validate: "visudo -cf %s"
     create: true
 
+- name: Configure passwordless sudo for packer user
+  ansible.builtin.lineinfile:
+    path: /etc/sudoers.d/packer
+    line: "packer ALL=(ALL) NOPASSWD:ALL"
+    mode: "0440"
+    validate: "visudo -cf %s"
+    create: true
+
 - name: Check if SSH key file exists on control node
   ansible.builtin.stat:
     path: "{{ lookup('env', 'HOME') }}/.ssh/vm-access-key.pub"
@@ -49,6 +57,23 @@
 - name: Add SSH public key for michael
   ansible.builtin.authorized_key:
     user: michael
+    key: "{{ ssh_key_content.content | b64decode | trim }}"
+    state: present
+    exclusive: false
+  when: ssh_key_file.stat.exists
+
+- name: Create .ssh directory for packer user
+  ansible.builtin.file:
+    path: /home/packer/.ssh
+    state: directory
+    owner: packer
+    group: packer
+    mode: "0700"
+  when: ssh_key_file.stat.exists
+
+- name: Add SSH public key for packer user
+  ansible.builtin.authorized_key:
+    user: packer
     key: "{{ ssh_key_content.content | b64decode | trim }}"
     state: present
     exclusive: false

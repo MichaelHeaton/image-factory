@@ -28,6 +28,7 @@
 
 - name: Include GRUB security tasks
   ansible.builtin.include_tasks: grub/main.yml
+  when: not (is_raspberry_pi | default(false))
 
 - name: Include network hardening tasks
   ansible.builtin.include_tasks: network/main.yml

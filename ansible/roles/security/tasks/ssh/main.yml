@@ -5,6 +5,20 @@
     dest: /etc/ssh/sshd_config.backup
     remote_src: true
 
+- name: Check if SSH keys are configured for packer user
+  ansible.builtin.stat:
+    path: /home/packer/.ssh/authorized_keys
+  register: packer_ssh_keys
+  failed_when: false
+  changed_when: false
+
+- name: Check if SSH keys are configured for michael user
+  ansible.builtin.stat:
+    path: /home/michael/.ssh/authorized_keys
+  register: michael_ssh_keys
+  failed_when: false
+  changed_when: false
+
 - name: Configure SSH security settings
   ansible.builtin.blockinfile:
     path: /etc/ssh/sshd_config
@@ -12,7 +26,7 @@
     block: |
       # Security hardening settings
       PermitRootLogin no
-      PasswordAuthentication no
+      PasswordAuthentication {{ 'yes' if (not packer_ssh_keys.stat.exists and not michael_ssh_keys.stat.exists) else 'no' }}
       PubkeyAuthentication yes
       AuthorizedKeysFile .ssh/authorized_keys
       PermitEmptyPasswords no
@@ -31,6 +45,24 @@
       MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha2-512,hmac-sha2-256
       KexAlgorithms curve25519-sha256@libssh.org,diffie-hellman-group-exchange-sha256
       HostKeyAlgorithms ssh-ed25519,ssh-ed25519-cert-v01@openssh.com,rsa-sha2-512,rsa-sha2-512-cert-v01@openssh.com
+
+- name: Find SSH config files in sshd_config.d directory
+  ansible.builtin.find:
+    paths: /etc/ssh/sshd_config.d
+    patterns: "*.conf"
+  register: sshd_config_d_files
+  failed_when: false
+  changed_when: false
+
+- name: Disable password authentication in sshd_config.d files
+  ansible.builtin.replace:
+    path: "{{ item.path }}"
+    regexp: '^PasswordAuthentication\s+yes'
+    replace: "PasswordAuthentication no"
+  loop: "{{ sshd_config_d_files.files | default([]) }}"
+  when:
+    - packer_ssh_keys.stat.exists or michael_ssh_keys.stat.exists
+    - sshd_config_d_files.files | default([]) | length > 0
 
 - name: Ensure SSH service is enabled and running
   ansible.builtin.systemd:

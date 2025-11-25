@@ -1,0 +1,38 @@
+---
+# PCIe configuration for M.2 HAT on Raspberry Pi 5
+
+- name: Check current config.txt PCIe settings
+  ansible.builtin.shell: |
+    grep -E "(pcie|dtoverlay.*pcie)" /boot/firmware/config.txt || echo "No PCIe config found"
+  register: current_pcie_config
+  changed_when: false
+  failed_when: false
+  when: is_raspberry_pi | default(false)
+
+- name: Display current PCIe config
+  ansible.builtin.debug:
+    msg: "{{ current_pcie_config.stdout_lines }}"
+  when: is_raspberry_pi | default(false) and current_pcie_config.rc == 0
+
+- name: Add PCIe configuration to config.txt
+  ansible.builtin.blockinfile:
+    path: /boot/firmware/config.txt
+    marker: "# {mark} ANSIBLE MANAGED BLOCK - PCIe Configuration"
+    block: |
+      # PCIe configuration for M.2 HAT
+      # Based on 52Pi wiki: https://wiki.52pi.com/index.php?title=EP-0234
+      # Note: 52Pi wiki specifies dtparam=pciex1 (not dtoverlay=pcie)
+      [all]
+      dtparam=pciex1
+      dtparam=pciex1_gen=3
+    insertafter: "^\\[all\\]"
+    create: true
+    backup: false
+  when: is_raspberry_pi | default(false) and (current_pcie_config.stdout | default('') | length == 0 or 'dtparam=pciex1' not in current_pcie_config.stdout)
+
+- name: Note about reboot requirement
+  ansible.builtin.debug:
+    msg: "PCIe configuration added. A reboot is required for changes to take effect."
+  when: is_raspberry_pi | default(false) and (current_pcie_config.stdout | default('') | length == 0 or 'dtparam=pciex1' not in current_pcie_config.stdout)
+  changed_when: false
+
