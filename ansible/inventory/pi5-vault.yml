@@ -1,0 +1,17 @@
+---
+# Example password vault file for Raspberry Pi 5 nodes
+# Copy this file to pi5-vault.yml and fill in the actual passwords
+# The pi5-vault.yml file is gitignored and will not be committed
+
+all:
+  children:
+    pi5:
+      hosts:
+        adblocker-pi5-01:
+          ansible_password: "packer"
+        auth-pi5-01:
+          ansible_password: "packer"
+        postgresql-pi5-01:
+          ansible_password: "packer"
+
+
