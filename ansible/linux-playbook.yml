@@ -4,6 +4,9 @@
   debugger: never
   gather_facts: true
   hosts: all
+  # Run tasks in parallel (one thread per host)
+  # This prevents one slow host from blocking others
+  serial: "100%" # Run all hosts in parallel (100% of hosts at once)
   roles:
     - base
     - users
