@@ -70,5 +70,8 @@
     enabled: false
     state: stopped
   loop: "{{ service_check.results }}"
-  when: item.status is defined and item.status.ActiveState is defined
+  when:
+    - item.status is defined
+    - item.status.LoadState is defined
+    - item.status.LoadState != "not-found"
   ignore_errors: true

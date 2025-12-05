@@ -1,14 +1,32 @@
 ---
+- name: Wait for apt lock to be released (if it exists)
+  ansible.builtin.wait_for:
+    path: /var/lib/apt/lists/lock
+    state: absent
+    timeout: 30
+  failed_when: false
+  changed_when: false
+
+- name: Wait for dpkg lock to be released (if it exists)
+  ansible.builtin.wait_for:
+    path: /var/lib/dpkg/lock-frontend
+    state: absent
+    timeout: 30
+  failed_when: false
+  changed_when: false
+
 - name: Update package lists
   ansible.builtin.apt:
     update_cache: yes
     cache_valid_time: 3600
+    lock_timeout: 300
 
 - name: Upgrade all packages
   ansible.builtin.apt:
     upgrade: dist
     update_cache: yes
     force_apt_get: true
+    lock_timeout: 300
   ignore_errors: true
 
 - name: Set base packages list
@@ -36,6 +54,7 @@
   ansible.builtin.apt:
     name: "{{ base_packages }}"
     state: present
+    lock_timeout: 300
 
 - name: Enable and start qemu-guest-agent
   ansible.builtin.systemd:
@@ -71,6 +90,21 @@
     state: present
   when: target_hostname is defined
 
+- name: Add swarm cluster nodes to /etc/hosts
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: '^{{ item.ansible_host }}\s+.*'
+    line: "{{ item.ansible_host }}\t{{ item.target_hostname }}"
+    state: present
+  loop: "{{ groups['swarm'] | default([]) }}"
+  when:
+    - groups['swarm'] is defined
+    - item.target_hostname is defined
+    - item.ansible_host is defined
+    - item.target_hostname != target_hostname | default('')
+  loop_control:
+    label: "{{ item.target_hostname }}"
+
 - name: Detect primary network interface
   ansible.builtin.shell: |
     ip route | grep default | awk '{print $5}' | head -1 || echo "eth0"
@@ -90,6 +124,24 @@
   register: netplan_config
   when: static_ip is defined
 
+- name: Find all netplan files
+  ansible.builtin.find:
+    paths: /etc/netplan
+    patterns: "*.yaml,*.yml"
+  register: netplan_files_result
+  when: static_ip is defined
+
+- name: Backup and remove conflicting netplan files (cloud-init, etc.)
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+    backup: true
+  loop: "{{ netplan_files_result.files | default([]) }}"
+  when:
+    - static_ip is defined
+    - item.path != '/etc/netplan/00-installer-config.yaml'
+  failed_when: false
+
 - name: Configure static IP with netplan
   ansible.builtin.template:
     src: netplan-static.yaml.j2
@@ -97,16 +149,45 @@
     mode: "0600"
     owner: root
     group: root
+    backup: true
   when: static_ip is defined
 
-- name: Apply netplan configuration (use try to avoid disconnection)
-  ansible.builtin.command: netplan try --timeout 30 || netplan apply
+- name: Apply netplan configuration
+  ansible.builtin.command: netplan apply
   when: static_ip is defined
-  register: netplan_apply
-  changed_when: netplan_apply.rc == 0
-  async: 30
-  poll: 0
-  ignore_errors: true
+  register: netplan_apply_result
+  changed_when: netplan_apply_result.rc == 0
+  failed_when: false  # Don't fail if netplan apply has issues, we'll verify below
+
+- name: Wait for network to stabilize after netplan apply
+  ansible.builtin.pause:
+    seconds: 3
+  when: static_ip is defined
+
+- name: Verify static IP is configured
+  ansible.builtin.command: ip addr show {{ network_interface | default('eth0') }}
+  register: ip_check
+  changed_when: false
+  when: static_ip is defined
+
+- name: Display IP configuration
+  ansible.builtin.debug:
+    var: ip_check.stdout
+  when: static_ip is defined
+
+- name: Test network connectivity to gateway
+  ansible.builtin.command: ping -c 2 -W 2 {{ network_gateway | default('172.16.15.1') }}
+  register: gateway_ping
+  changed_when: false
+  failed_when: false
+  when: static_ip is defined
+
+- name: Warn if gateway is not reachable
+  ansible.builtin.debug:
+    msg: "WARNING: Gateway {{ network_gateway | default('172.16.15.1') }} is not reachable. This may indicate a network infrastructure issue. Check switch/VLAN configuration and firewall rules."
+  when:
+    - static_ip is defined
+    - gateway_ping.rc != 0
 
 - name: Set timezone to UTC
   ansible.builtin.timezone:
