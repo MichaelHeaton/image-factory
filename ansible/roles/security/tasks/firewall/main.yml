@@ -1,7 +1,20 @@
 ---
-- name: Reset UFW to defaults
+- name: Check if UFW is configured
+  ansible.builtin.command: ufw status | head -1
+  register: ufw_status_check
+  changed_when: false
+  failed_when: false
+
+- name: Reset UFW to defaults (only if not already configured)
   community.general.ufw:
     state: reset
+  when: "'Status: active' not in ufw_status_check.stdout | default('')"
+
+- name: Check current UFW default policies
+  ansible.builtin.command: ufw status verbose | grep -E "Default:"
+  register: ufw_default_policies
+  changed_when: false
+  failed_when: false
 
 - name: Configure UFW default policies
   community.general.ufw:
@@ -10,6 +23,13 @@
   loop:
     - { direction: "incoming", policy: "deny" }
     - { direction: "outgoing", policy: "allow" }
+  when: "'deny (incoming)' not in ufw_default_policies.stdout | default('') or 'allow (outgoing)' not in ufw_default_policies.stdout | default('')"
+
+- name: Check if SSH rule exists
+  ansible.builtin.command: ufw status | grep -q "22/tcp.*ALLOW" || ufw status numbered | grep -q "22/tcp"
+  register: ufw_ssh_exists
+  changed_when: false
+  failed_when: false
 
 - name: Allow SSH through firewall
   community.general.ufw:
@@ -17,10 +37,92 @@
     port: "22"
     proto: tcp
     comment: "SSH"
+  when: ufw_ssh_exists.rc != 0
+
+- name: Check if local network rule exists
+  ansible.builtin.command: ufw status | grep -q "172.16.0.0/12" || ufw status numbered | grep -q "172.16.0.0/12"
+  register: ufw_local_network_exists
+  changed_when: false
+  failed_when: false
+
+- name: Allow all traffic from local network (includes ICMP)
+  ansible.builtin.command: ufw allow from 172.16.0.0/12 comment 'Allow all from local network (172.16.0.0/12)'
+  register: ufw_local_network
+  changed_when: "'Rule added' in ufw_local_network.stdout or 'Rule updated' in ufw_local_network.stdout"
+  failed_when: false
+  when: ufw_local_network_exists.rc != 0
+
+- name: Check if ICMP rules exist
+  ansible.builtin.command: |
+    iptables -C ufw-before-input -p icmp --icmp-type {{ item }} -j ACCEPT 2>&1
+  loop:
+    - echo-reply
+    - destination-unreachable
+    - time-exceeded
+    - parameter-problem
+  register: icmp_check
+  changed_when: false
+  failed_when: false
+  become: true
+
+- name: Allow ICMP echo replies and error messages (required for internet connectivity)
+  ansible.builtin.command: |
+    iptables -I ufw-before-input -p icmp --icmp-type {{ item.item }} -j ACCEPT
+  loop: "{{ icmp_check.results }}"
+  when: item.rc != 0
+  register: icmp_rules
+  changed_when: item.rc == 0
+  failed_when: false
+  become: true
+
+- name: Check if established/related rule exists
+  ansible.builtin.command: |
+    iptables -C ufw-before-input -m state --state ESTABLISHED,RELATED -j ACCEPT 2>&1
+  register: established_check
+  changed_when: false
+  failed_when: false
+  become: true
+
+- name: Allow established and related connections (required for DNS and other protocols)
+  ansible.builtin.command: |
+    iptables -I ufw-before-input -m state --state ESTABLISHED,RELATED -j ACCEPT
+  when: established_check.rc != 0
+  register: established_rule
+  changed_when: established_rule.rc == 0
+  failed_when: false
+  become: true
+
+- name: Check if DNS rules exist
+  ansible.builtin.command: |
+    iptables -C ufw-before-input -p {{ item }} --dport 53 -j ACCEPT 2>&1
+  loop:
+    - udp
+    - tcp
+  register: dns_check
+  changed_when: false
+  failed_when: false
+  become: true
+
+- name: Allow DNS responses (UDP and TCP)
+  ansible.builtin.command: |
+    iptables -I ufw-before-input -p {{ item.item }} --dport 53 -j ACCEPT
+  loop: "{{ dns_check.results }}"
+  when: item.rc != 0
+  register: dns_rules
+  changed_when: item.rc == 0
+  failed_when: false
+  become: true
+
+- name: Check if UFW is enabled
+  ansible.builtin.command: 'ufw status | head -1 | grep -q "Status: active"'
+  register: ufw_enabled_check
+  changed_when: false
+  failed_when: false
 
 - name: Enable UFW
   community.general.ufw:
     state: enabled
+  when: ufw_enabled_check.rc != 0
 
 - name: Verify UFW allows SSH
   ansible.builtin.command: ufw status | grep -q "22/tcp.*ALLOW" || ufw status numbered | grep -q "22/tcp"

@@ -5,6 +5,7 @@
       - auditd
       - audispd-plugins
     state: present
+    lock_timeout: 300
 
 - name: Configure auditd rules
   ansible.builtin.copy:
