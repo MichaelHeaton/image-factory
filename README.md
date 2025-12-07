@@ -78,9 +78,9 @@ Follow the [official Packer installation guide](https://www.packer.io/docs/insta
 
 1. Download Ubuntu 24.04 LTS Server ISO from [ubuntu.com](https://ubuntu.com/download/server)
 2. Upload the ISO to your Proxmox storage:
-   - Via web UI: Datacenter → Storage → local → Content → Upload
-   - Or via command line: `scp ubuntu-24.04-server-amd64.iso root@proxmox:/var/lib/vz/template/iso/`
-3. Note the storage pool name (typically `local`) and the ISO path
+   - Via web UI: Datacenter → Storage → isos → Content → Upload
+   - Or via command line: Upload to the `isos` NFS storage pool
+3. Note the storage pool name (`isos` for NFS storage) and the ISO path
 
 #### Create API Token
 
@@ -96,17 +96,19 @@ Follow the [official Packer installation guide](https://www.packer.io/docs/insta
 ### 4. Configure Environment Variables
 
 1. Copy the example environment file:
+
    ```bash
    cp packer/env.example packer/.env
    ```
 
 2. Edit `packer/.env` with your Proxmox details:
+
    ```bash
    PROXMOX_URL=https://your-proxmox.example.com:8006/api2/json
    PROXMOX_API_TOKEN_ID=packer@pam!packer-token
    PROXMOX_API_TOKEN_SECRET=your-token-secret-here
    PROXMOX_NODE=pve
-   PROXMOX_STORAGE_POOL=local-lvm
+   PROXMOX_STORAGE_POOL=vmdks
    PROXMOX_NETWORK_BRIDGE=vmbr0
    ```
 
@@ -117,10 +119,10 @@ Follow the [official Packer installation guide](https://www.packer.io/docs/insta
 Edit `packer/ubuntu-24.04/ubuntu-24.04.pkr.hcl` and update the `iso_file` line if your ISO is stored differently:
 
 ```hcl
-iso_file = "local:iso/ubuntu-24.04-server-amd64.iso"
+iso_file = "isos:iso/ubuntu-24.04-server-amd64.iso"
 ```
 
-Adjust `local` to match your storage pool name and the path to match your ISO location.
+The default configuration uses the `isos` NFS storage pool. Adjust the storage pool name and path to match your ISO location if needed.
 
 ## Building Images
 
@@ -133,6 +135,7 @@ The build script validates configuration and handles the build process:
 ```
 
 The script will:
+
 1. Check for Packer installation
 2. Validate environment variables
 3. Validate Packer configuration
@@ -176,13 +179,29 @@ packer build -var 'vm_cpu_cores=4' -var 'vm_memory=4096' ubuntu-24.04.pkr.hcl
 - **Disk**: 20 GB
 - **Network**: Bridge mode (vmbr0)
 - **OS**: Ubuntu 24.04 LTS Server
-- **Template Name**: `ubuntu-24.04-hardened`
+- **VM ID**: 900 (templates use 900+ range to separate from regular VMs)
+- **Template Name**: `ubuntu-24.04-hardened-{YYYYMMDD}` (date suffix added automatically)
+
+### Template Naming and VM IDs
+
+- **VM ID Range**: Templates use VM ID 900+ by default to keep them separate from regular VMs (typically 100-899)
+- **Date Suffix**: Template names automatically include a date suffix in YYYYMMDD format (e.g., `ubuntu-24.04-hardened-20251206`)
+- **Disk Naming**: Proxmox automatically names disks as `vm-{id}-disk-{num}.raw` (or `base-{id}-disk-{num}.raw` for templates)
+  - The disk filename is based on the VM ID, not the VM name (this is a Proxmox limitation)
+  - With VM ID 900+, disks will be named like: `vm-900-disk-0.raw` or `base-900-disk-0.raw`
+  - The VM ID range (900+) helps identify template disks when viewing storage on the NAS
+  - The descriptive VM name with date helps identify templates in the Proxmox UI
+- **Disk Organization**: A post-processor script attempts to organize disks into folders named after the VM
+  - Due to Proxmox's internal disk management, automatic folder organization has limitations
+  - The script provides information about disk locations and recommended folder structure
+  - Manual organization may be required for optimal disk organization on NFS storage
 
 ## Security Hardening Details
 
 The security hardening script implements the following measures:
 
 ### SSH Hardening
+
 - Root login disabled
 - Password authentication disabled (key-only)
 - Secure cipher and MAC algorithms
@@ -190,16 +209,19 @@ The security hardening script implements the following measures:
 - Maximum authentication attempts limited
 
 ### Firewall (UFW)
+
 - Default deny incoming traffic
 - Allow outgoing traffic
 - SSH (port 22) allowed for management
 
 ### Automatic Updates
+
 - Automatic security updates enabled
 - Unattended upgrades configured
 - Automatic cleanup of unused packages
 
 ### Kernel Security
+
 - IP forwarding disabled
 - Source routing disabled
 - ICMP redirects disabled
@@ -209,6 +231,7 @@ The security hardening script implements the following measures:
 - Kernel symbol restrictions
 
 ### System Hardening
+
 - Unnecessary packages removed
 - Unnecessary services disabled
 - Audit logging configured
@@ -312,6 +335,43 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [Proxmox Packer Plugin](https://github.com/hashicorp/packer-plugin-proxmox)
 - [Ubuntu Server Guide](https://ubuntu.com/server/docs)
 - [CIS Benchmarks](https://www.cisecurity.org/benchmark/ubuntu_linux) (for advanced hardening)
+
+## Automation
+
+The Image Factory can be automated to rebuild templates monthly and clean up old versions. See [AUTOMATION.md](./AUTOMATION.md) for detailed setup instructions.
+
+**Quick Start Options:**
+
+1. **Cron Job** (Simplest):
+
+   ```bash
+   0 2 1 * * /path/to/image-factory/scripts/automated-build.sh
+   ```
+
+2. **GitHub Actions** (Recommended for visibility):
+
+   - Set up self-hosted runner on your private network
+   - Configure secrets in GitHub
+   - Workflow file: `.github/workflows/build-template.yml`
+
+3. **Jenkins**:
+
+   - Use the provided `Jenkinsfile`
+   - Configure credentials in Jenkins
+
+4. **Systemd Timer**:
+   ```bash
+   sudo cp scripts/image-factory.service /etc/systemd/system/
+   sudo cp scripts/image-factory.timer /etc/systemd/system/
+   sudo systemctl enable image-factory.timer
+   sudo systemctl start image-factory.timer
+   ```
+
+The automation will:
+
+- Build a new template with current date (YYYYMMDD format)
+- Delete old templates (keeping only the newest by default)
+- Only delete old templates if the new build succeeds
 
 ## Support
 

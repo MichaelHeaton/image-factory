@@ -1,0 +1,12 @@
+[Unit]
+Description=Run Image Factory build monthly
+Requires=image-factory.service
+
+[Timer]
+# Run on the 1st of every month at 2:00 AM
+OnCalendar=*-*-01 02:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+

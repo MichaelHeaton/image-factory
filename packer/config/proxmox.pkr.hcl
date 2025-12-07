@@ -30,7 +30,7 @@ variable "proxmox_node" {
 variable "proxmox_storage_pool" {
   type        = string
   description = "Proxmox storage pool for VM disks"
-  default     = "local-lvm"
+  default     = "vmdks"
 }
 
 variable "proxmox_network_bridge" {
@@ -42,7 +42,7 @@ variable "proxmox_network_bridge" {
 variable "proxmox_iso_storage_pool" {
   type        = string
   description = "Proxmox storage pool for ISO files"
-  default     = "local"
+  default     = "isos"
 }
 
 locals {
@@ -52,8 +52,8 @@ locals {
   proxmox_api_token_id_final  = var.proxmox_api_token_id != "" ? var.proxmox_api_token_id : (try(env("PROXMOX_API_TOKEN_ID"), ""))
   proxmox_api_token_secret_final = var.proxmox_api_token_secret != "" ? var.proxmox_api_token_secret : (try(env("PROXMOX_API_TOKEN_SECRET"), ""))
   proxmox_node_final          = var.proxmox_node != "" ? var.proxmox_node : (try(env("PROXMOX_NODE"), ""))
-  proxmox_storage_pool_final  = var.proxmox_storage_pool != "" ? var.proxmox_storage_pool : (try(env("PROXMOX_STORAGE_POOL"), "local-lvm"))
+  proxmox_storage_pool_final  = var.proxmox_storage_pool != "" ? var.proxmox_storage_pool : (try(env("PROXMOX_STORAGE_POOL"), "vmdks"))
   proxmox_network_bridge_final = var.proxmox_network_bridge != "" ? var.proxmox_network_bridge : (try(env("PROXMOX_NETWORK_BRIDGE"), "vmbr0"))
-  proxmox_iso_storage_pool_final = var.proxmox_iso_storage_pool != "" ? var.proxmox_iso_storage_pool : (try(env("PROXMOX_ISO_STORAGE_POOL"), "local"))
+  proxmox_iso_storage_pool_final = var.proxmox_iso_storage_pool != "" ? var.proxmox_iso_storage_pool : (try(env("PROXMOX_ISO_STORAGE_POOL"), "isos"))
 }
 

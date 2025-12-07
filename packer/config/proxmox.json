@@ -2,9 +2,9 @@
   "proxmox": {
     "url": "https://gpu01.specterrealm.com:8006/api2/json",
     "node": "GPU01",
-    "storage_pool": "disk-image-nfs-nas02",
+    "storage_pool": "vmdks",
     "network_bridge": "vmbr0",
-    "iso_storage_pool": "local",
+    "iso_storage_pool": "isos",
     "cluster": "pve-cluster01",
     "nodes": ["gpu01.specterrealm.com", "nuc01.specterrealm.com", "nuc02.specterrealm.com"]
   },

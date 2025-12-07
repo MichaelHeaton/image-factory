@@ -1,0 +1,20 @@
+# Dockerfile for GitHub Actions runner with Packer pre-installed
+FROM myoung34/github-runner:latest
+
+# Install Packer
+RUN apt-get update && \
+  apt-get install -y wget unzip && \
+  wget https://releases.hashicorp.com/packer/1.10.0/packer_1.10.0_linux_amd64.zip && \
+  unzip packer_1.10.0_linux_amd64.zip && \
+  mv packer /usr/local/bin/ && \
+  chmod +x /usr/local/bin/packer && \
+  rm packer_1.10.0_linux_amd64.zip && \
+  apt-get clean && \
+  rm -rf /var/lib/apt/lists/*
+
+# Verify Packer installation
+RUN packer version
+
+# The base image handles the runner setup
+# Configure via environment variables when running the container
+
