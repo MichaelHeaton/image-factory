@@ -28,22 +28,28 @@
     validate: "visudo -cf %s"
     create: true
 
-- name: Check if SSH key file exists on control node
-  ansible.builtin.stat:
-    path: "{{ lookup('env', 'HOME') }}/.ssh/vm-access-key.pub"
-  register: ssh_key_file
+- name: Find SSH public keys on control node
+  ansible.builtin.find:
+    paths: "{{ lookup('env', 'HOME') }}/.ssh"
+    patterns:
+      - "vm-access-key.pub"
+      - "id_ed25519.pub"
+      - "id_rsa.pub"
+    file_type: file
+  register: ssh_key_files
   delegate_to: localhost
   become: false
   run_once: true
+  changed_when: false
 
-- name: Read SSH public key from control node
+- name: Read SSH public keys from control node
   ansible.builtin.slurp:
-    src: "{{ lookup('env', 'HOME') }}/.ssh/vm-access-key.pub"
-  register: ssh_key_content
+    src: "{{ item.path }}"
+  register: ssh_key_contents
   delegate_to: localhost
   become: false
-  run_once: true
-  when: ssh_key_file.stat.exists
+  loop: "{{ ssh_key_files.files }}"
+  when: ssh_key_files.files | length > 0
 
 - name: Create .ssh directory for michael
   ansible.builtin.file:
@@ -52,15 +58,16 @@
     owner: michael
     group: michael
     mode: "0700"
-  when: ssh_key_file.stat.exists
+  when: ssh_key_contents.results is defined and ssh_key_contents.results | length > 0
 
-- name: Add SSH public key for michael
+- name: Add SSH public keys for michael
   ansible.builtin.authorized_key:
     user: michael
-    key: "{{ ssh_key_content.content | b64decode | trim }}"
+    key: "{{ item.content | b64decode | trim }}"
     state: present
     exclusive: false
-  when: ssh_key_file.stat.exists
+  loop: "{{ ssh_key_contents.results }}"
+  when: ssh_key_contents.results is defined and ssh_key_contents.results | length > 0
 
 - name: Create .ssh directory for packer user
   ansible.builtin.file:
@@ -69,15 +76,25 @@
     owner: packer
     group: packer
     mode: "0700"
-  when: ssh_key_file.stat.exists
+  when: ssh_key_contents.results is defined and ssh_key_contents.results | length > 0
 
-- name: Add SSH public key for packer user
+- name: Add SSH public keys for packer user
   ansible.builtin.authorized_key:
     user: packer
-    key: "{{ ssh_key_content.content | b64decode | trim }}"
+    key: "{{ item.content | b64decode | trim }}"
     state: present
     exclusive: false
-  when: ssh_key_file.stat.exists
+  loop: "{{ ssh_key_contents.results }}"
+  when: ssh_key_contents.results is defined and ssh_key_contents.results | length > 0
+
+- name: Warn if no SSH keys were found
+  ansible.builtin.debug:
+    msg: |
+      WARNING: No SSH public keys found in ~/.ssh/
+      Looked for: vm-access-key.pub, id_ed25519.pub, id_rsa.pub
+      Password authentication will remain enabled. This is less secure.
+      To fix: Copy your SSH public key to ~/.ssh/vm-access-key.pub or rebuild the image.
+  when: ssh_key_contents.results is not defined or ssh_key_contents.results | length == 0
 
 - name: Set default shell to bash (with zsh available)
   ansible.builtin.user:

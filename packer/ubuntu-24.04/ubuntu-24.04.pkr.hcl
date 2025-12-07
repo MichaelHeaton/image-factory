@@ -41,7 +41,7 @@ variable "proxmox_node" {
 variable "proxmox_storage_pool" {
   type        = string
   description = "Proxmox storage pool"
-  default     = "disk-image-nfs-nas02"
+  default     = "vmdks"
 }
 
 variable "proxmox_network_bridge" {
@@ -81,9 +81,15 @@ variable "ssh_password" {
   default     = "packer"
 }
 
+variable "vm_id" {
+  type        = number
+  description = "VM ID for the template (use 900+ range for templates to separate from regular VMs)"
+  default     = 900
+}
+
 variable "template_name" {
   type        = string
-  description = "Template name in Proxmox"
+  description = "Base template name in Proxmox (date will be appended automatically)"
   default     = "ubuntu-24.04-hardened"
 }
 
@@ -95,12 +101,18 @@ variable "template_description" {
 
 locals {
   # Read from environment variables if variables are empty
-  proxmox_url_final           = var.proxmox_url != "" ? var.proxmox_url : (try(env("PROXMOX_URL"), ""))
-  proxmox_api_token_id_final  = var.proxmox_api_token_id != "" ? var.proxmox_api_token_id : (try(env("PROXMOX_API_TOKEN_ID"), ""))
+  proxmox_url_final              = var.proxmox_url != "" ? var.proxmox_url : (try(env("PROXMOX_URL"), ""))
+  proxmox_api_token_id_final     = var.proxmox_api_token_id != "" ? var.proxmox_api_token_id : (try(env("PROXMOX_API_TOKEN_ID"), ""))
   proxmox_api_token_secret_final = var.proxmox_api_token_secret != "" ? var.proxmox_api_token_secret : (try(env("PROXMOX_API_TOKEN_SECRET"), ""))
-  proxmox_node_final          = var.proxmox_node != "" ? var.proxmox_node : (try(env("PROXMOX_NODE"), ""))
-  proxmox_storage_pool_final  = var.proxmox_storage_pool != "" ? var.proxmox_storage_pool : (try(env("PROXMOX_STORAGE_POOL"), "local-lvm"))
-  proxmox_network_bridge_final = var.proxmox_network_bridge != "" ? var.proxmox_network_bridge : (try(env("PROXMOX_NETWORK_BRIDGE"), "vmbr0"))
+  proxmox_node_final             = var.proxmox_node != "" ? var.proxmox_node : (try(env("PROXMOX_NODE"), ""))
+  proxmox_storage_pool_final     = var.proxmox_storage_pool != "" ? var.proxmox_storage_pool : (try(env("PROXMOX_STORAGE_POOL"), "vmdks"))
+  proxmox_network_bridge_final   = var.proxmox_network_bridge != "" ? var.proxmox_network_bridge : (try(env("PROXMOX_NETWORK_BRIDGE"), "vmbr0"))
+
+  # Generate date suffix in YYYYMMDD format
+  build_date = formatdate("YYYYMMDD", timestamp())
+
+  # Template name with date suffix
+  template_name_with_date = "${var.template_name}-${local.build_date}"
 }
 
 source "proxmox-iso" "ubuntu-24-04" {
@@ -109,14 +121,15 @@ source "proxmox-iso" "ubuntu-24-04" {
   token                    = local.proxmox_api_token_secret_final
   insecure_skip_tls_verify = false
   node                     = local.proxmox_node_final
+  vm_id                    = var.vm_id
 
-  vm_name         = var.template_name
-  template_name   = var.template_name
-  template_description = var.template_description
+  vm_name              = local.template_name_with_date
+  template_name        = local.template_name_with_date
+  template_description = "${var.template_description} (Built: ${local.build_date})"
 
   boot_iso {
-    iso_file         = "iso-nfs:iso/ubuntu-24.04.3-live-server-amd64.iso"
-    iso_storage_pool = "iso-nfs"
+    iso_file         = "isos:iso/ubuntu-24.04.3-live-server-amd64.iso"
+    iso_storage_pool = "isos"
     type             = "ide"
     unmount          = true
   }
@@ -130,6 +143,12 @@ source "proxmox-iso" "ubuntu-24-04" {
     storage_pool = local.proxmox_storage_pool_final
     type         = "scsi"
     cache_mode   = "writeback"
+    format       = "raw"
+    # Note: Proxmox automatically names disks as vm-{id}-disk-{num}.raw (or base-{id}-disk-{num}.raw for templates)
+    # The disk filename is based on the VM ID, not the VM name. This is a Proxmox limitation.
+    # With VM ID 900+, disks will be named like: vm-900-disk-0.raw or base-900-disk-0.raw
+    # The VM ID range (900+) helps identify template disks when viewing storage on the NAS.
+    # The descriptive VM name with date helps identify templates in the Proxmox UI.
   }
 
   network_adapters {
@@ -141,10 +160,10 @@ source "proxmox-iso" "ubuntu-24-04" {
   memory = var.vm_memory
   cores  = var.vm_cpu_cores
 
-  cpu_type    = "host"
-  os          = "l26"
-  bios        = "seabios"
-  machine     = "q35"
+  cpu_type = "host"
+  os       = "l26"
+  bios     = "seabios"
+  machine  = "q35"
 
   # Boot order: Disk first, then CD-ROM (for template, disk should boot first)
   # During build, Packer will handle booting from ISO
@@ -161,7 +180,7 @@ source "proxmox-iso" "ubuntu-24-04" {
     "<enter>"
   ]
 
-  boot_wait = "5s"
+  boot_wait         = "5s"
   boot_key_interval = "100ms"
 
   # Use http_content to serve user-data and meta-data for autoinstall
@@ -173,16 +192,16 @@ source "proxmox-iso" "ubuntu-24-04" {
   # Wait for VM to be fully running before sending boot commands
   onboot = false
 
-  ssh_username         = var.ssh_username
-  ssh_password         = var.ssh_password
-  ssh_timeout          = "45m"
+  ssh_username           = var.ssh_username
+  ssh_password           = var.ssh_password
+  ssh_timeout            = "45m"
   ssh_handshake_attempts = 100
 
-  cloud_init              = false
+  cloud_init = false
 }
 
 build {
-  name = "ubuntu-24.04-hardened"
+  name = local.template_name_with_date
 
   sources = ["source.proxmox-iso.ubuntu-24-04"]
 
@@ -203,8 +222,26 @@ build {
   }
 
   post-processor "shell-local" {
+    script = "${path.root}/../scripts/organize-disk.sh"
+    environment_vars = [
+      "VM_ID=${var.vm_id}",
+      "VM_NAME=${local.template_name_with_date}",
+      "STORAGE_POOL=${local.proxmox_storage_pool_final}",
+      "PROXMOX_URL=${local.proxmox_url_final}",
+      "TOKEN_ID=${local.proxmox_api_token_id_final}",
+      "TOKEN_SECRET=${local.proxmox_api_token_secret_final}",
+      "NODE=${local.proxmox_node_final}"
+    ]
+  }
+
+  post-processor "shell-local" {
     inline = [
-      "echo 'Build completed: ${var.template_name}'"
+      "echo ''",
+      "echo '========================================'",
+      "echo 'Build completed: ${local.template_name_with_date}'",
+      "echo 'Template VM ID: ${var.vm_id}'",
+      "echo 'Build date: ${local.build_date}'",
+      "echo '========================================'"
     ]
   }
 }

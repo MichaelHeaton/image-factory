@@ -1,0 +1,16 @@
+[Unit]
+Description=Image Factory Automated Build
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/path/to/image-factory
+ExecStart=/path/to/image-factory/scripts/automated-build.sh
+StandardOutput=journal
+StandardError=journal
+
+# Environment variables can be set here or in a separate file
+# EnvironmentFile=/etc/image-factory/env
+

@@ -19,6 +19,18 @@
   failed_when: false
   changed_when: false
 
+- name: Determine if password auth should be enabled
+  ansible.builtin.set_fact:
+    enable_password_auth: "{{ not (packer_ssh_keys.stat.exists or michael_ssh_keys.stat.exists) }}"
+
+- name: Warn if password auth will be enabled
+  ansible.builtin.debug:
+    msg: |
+      WARNING: No SSH keys found for packer or michael users.
+      Password authentication will be ENABLED for security reasons.
+      This is less secure. Add SSH keys and rebuild the image to disable password auth.
+  when: enable_password_auth | bool
+
 - name: Configure SSH security settings
   ansible.builtin.blockinfile:
     path: /etc/ssh/sshd_config
@@ -26,7 +38,7 @@
     block: |
       # Security hardening settings
       PermitRootLogin no
-      PasswordAuthentication {{ 'yes' if (not packer_ssh_keys.stat.exists and not michael_ssh_keys.stat.exists) else 'no' }}
+      PasswordAuthentication {{ 'yes' if enable_password_auth | bool else 'no' }}
       PubkeyAuthentication yes
       AuthorizedKeysFile .ssh/authorized_keys
       PermitEmptyPasswords no

@@ -1,0 +1,76 @@
+name: Build and Update Template
+
+on:
+  schedule:
+    # Run on the 1st of every month at 2 AM UTC
+    - cron: "0 2 1 * *"
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  build-template:
+    runs-on: self-hosted # Requires self-hosted runner on your private network
+    environment: production
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Packer
+        run: |
+          # Check if Packer is installed, install if not
+          if ! command -v packer &> /dev/null; then
+            echo "Installing Packer..."
+            # Add Packer installation steps here
+            # Example: wget, unzip, move to PATH
+          fi
+          packer version
+
+      - name: Load environment variables
+        run: |
+          # Load from GitHub Secrets
+          echo "PROXMOX_URL=${{ secrets.PROXMOX_URL }}" >> $GITHUB_ENV
+          echo "PROXMOX_API_TOKEN_ID=${{ secrets.PROXMOX_API_TOKEN_ID }}" >> $GITHUB_ENV
+          echo "PROXMOX_API_TOKEN_SECRET=${{ secrets.PROXMOX_API_TOKEN_SECRET }}" >> $GITHUB_ENV
+          echo "PROXMOX_NODE=${{ secrets.PROXMOX_NODE }}" >> $GITHUB_ENV
+          echo "PROXMOX_STORAGE_POOL=${{ secrets.PROXMOX_STORAGE_POOL }}" >> $GITHUB_ENV
+          echo "PROXMOX_NETWORK_BRIDGE=${{ secrets.PROXMOX_NETWORK_BRIDGE }}" >> $GITHUB_ENV
+
+      - name: Initialize Packer plugins
+        working-directory: packer/ubuntu-24.04
+        run: packer init ubuntu-24.04.pkr.hcl
+
+      - name: Build new template
+        working-directory: packer/ubuntu-24.04
+        run: |
+          packer build \
+            -var "proxmox_url=${{ env.PROXMOX_URL }}" \
+            -var "proxmox_api_token_id=${{ env.PROXMOX_API_TOKEN_ID }}" \
+            -var "proxmox_api_token_secret=${{ env.PROXMOX_API_TOKEN_SECRET }}" \
+            -var "proxmox_node=${{ env.PROXMOX_NODE }}" \
+            -var "proxmox_storage_pool=${{ env.PROXMOX_STORAGE_POOL }}" \
+            -var "proxmox_network_bridge=${{ env.PROXMOX_NETWORK_BRIDGE }}" \
+            -var "vm_id=900" \
+            ubuntu-24.04.pkr.hcl
+
+      - name: Cleanup old templates
+        if: success() # Only run if build succeeded
+        env:
+          PROXMOX_URL: ${{ env.PROXMOX_URL }}
+          TOKEN_ID: ${{ env.PROXMOX_API_TOKEN_ID }}
+          TOKEN_SECRET: ${{ env.PROXMOX_API_TOKEN_SECRET }}
+          NODE: ${{ env.PROXMOX_NODE }}
+          TEMPLATE_PATTERN: "ubuntu-24.04-hardened-"
+          KEEP_COUNT: "1"
+          DRY_RUN: "false"
+        run: |
+          ./scripts/cleanup-old-templates.sh
+
+      - name: Build summary
+        if: always()
+        run: |
+          echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ Template build completed successfully" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Template build failed" >> $GITHUB_STEP_SUMMARY
+          fi
